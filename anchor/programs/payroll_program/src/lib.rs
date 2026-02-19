@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+pub mod states;
 
 declare_id!("A9fnM3skS5kbECt2isFV2EGvS4D7hnsMjnqi2YBwaeed");
 
