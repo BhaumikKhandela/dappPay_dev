@@ -37,11 +37,13 @@ pub fn create_org(ctx: Context<CreateOrgCtx>, name: String, bump: u8) -> Result<
 }
 
 // Context struct: defines all accounts needed for this instruction
+#[derive(Accounts)]
+#[instruction(name: String)]
 pub struct CreateOrgCtx<'info> {
     #[account(
         init,
         payer = authority,
-        space = Organisation::INIT_SPACE,
+        space = 8 + Organisation::INIT_SPACE,
         seeds = [b"org", authority.key().as_ref(), name.as_bytes()],
         bump
     )]
