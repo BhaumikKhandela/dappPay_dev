@@ -13,7 +13,7 @@ pub fn fund_treasury(ctx: Context<FundTreasuryCtx>, amount: u64) -> Result<()> {
     );
 
     // Prepare CPI (Cross-Program Invocation) to system program
-    // We're calling system program's transfer instruction
+    // We're calling system program's transfer instruction 
     let cpi_ctx = CpiContext::new(
         ctx.accounts.system_program.to_account_info(),
         system_program::Transfer {
@@ -27,7 +27,7 @@ pub fn fund_treasury(ctx: Context<FundTreasuryCtx>, amount: u64) -> Result<()> {
     // Execute the transfer 
     system_program::transfer(cpi_ctx, amount)?;
 
-    // Update the organisation's treasury balance
+    // Update the organisation's treasury balance 
     ctx.accounts.org.treasury += amount;
 
     // Log the funding event
