@@ -18,7 +18,7 @@ pub fn fund_treasury(ctx: Context<FundTreasuryCtx>, amount: u64) -> Result<()> {
         ctx.accounts.system_program.to_account_info(),
         system_program::Transfer {
             // Transfer from authority's wallet
-            from: ctx.accounts.auhtority.to_account_info(),
+            from: ctx.accounts.authority.to_account_info(),
             // Transfer to the organisation's PDA account
             to: ctx.accounts.org.to_account_info(),
         }
