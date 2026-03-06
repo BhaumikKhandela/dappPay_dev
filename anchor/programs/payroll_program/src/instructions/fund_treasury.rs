@@ -1,5 +1,5 @@
 use crate::errors::PayrollError;
-use crate::states::{Organisation, Worker};
+use crate::states::{Organisation};
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 

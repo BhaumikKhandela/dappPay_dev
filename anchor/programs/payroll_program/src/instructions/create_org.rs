@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::errors::PayrollError;
 use crate::states::Organisation;
-pub fn create_org(ctx: Context<CreateOrgCtx>, name: String, bump: u8) -> Result<()> {
+pub fn create_org(ctx: Context<CreateOrgCtx>, name: String) -> Result<()> {
 
     // Validate: organisation name must not exceed maximum length
 
