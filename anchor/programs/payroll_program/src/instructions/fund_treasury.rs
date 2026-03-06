@@ -43,8 +43,8 @@ pub struct FundTreasuryCtx<'info> {
     // seeds: ensures this is the correct organisation PDA
     #[account(
         mut,
-        has_one = auhtority @ PayrollError::Unauthorised,
-        seeds = [b"org", auhtority.key().as_ref(), org.name.as_bytes()],
+        has_one = authority @ PayrollError::Unauthorised,
+        seeds = [b"org", authority.key().as_ref(), org.name.as_bytes()],
         bump = org.bump
     )]
     pub org: Account<'info, Organisation>,
