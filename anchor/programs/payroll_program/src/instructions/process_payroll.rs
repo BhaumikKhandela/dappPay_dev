@@ -84,7 +84,7 @@ cycle_timestamp: u64,
 
             // Update the worker's last paid cycle
             worker.last_paid_cycle = cycle_timestamp;
-            
+
             // Serialize updated worker data back to the account
             let mut data = pda_ai.try_borrow_mut_data()?;
             worker.try_serialize(&mut &mut data[..])?;
