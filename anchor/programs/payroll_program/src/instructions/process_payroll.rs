@@ -76,12 +76,15 @@ cycle_timestamp: u64,
         let pda_ai = &ctx.remaining_accounts[pda_idx];
         let wallet_ai = &ctx.remaining_accounts[wallet_idx];
 
-        let worker = Account::<Worker>::try_from(pda_ai)?;
+        let mut worker = Account::<Worker>::try_from(pda_ai)?;
 
         if worker.last_paid_cycle < cycle_timestamp {
             // Get the salary amount before updating
             let salary_amount = worker.salary;
 
+            // Update the worker's last paid cycle
+            worker.last_paid_cycle = cycle_timestamp;
+            
             // Serialize updated worker data back to the account
             let mut data = pda_ai.try_borrow_mut_data()?;
             worker.try_serialize(&mut &mut data[..])?;
