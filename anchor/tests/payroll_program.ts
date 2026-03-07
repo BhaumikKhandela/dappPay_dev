@@ -106,6 +106,27 @@ describe("Payroll Program - Comprehensive Tests", () => {
             assert.equal(orgAccount.workersCount.toNumber(), 0, 'Initial workers count should be 0');
             assert.equal(orgAccount.bump, orgBump, 'Bump seed mismatch');
         })
+    });
+
+    describe('Should fail to create org with name exceeding 100 characters', async () => {
+        const longName = 'a'.repeat(101);
+
+        try {
+            await program.methods.createOrg(longName).accounts({
+                authority: authority.publicKey
+            }).rpc();
+
+            assert.fail('Should have failed with name length error');
+        } catch (error: unknown) {
+            const errorStr = (error as Error).toString();
+            // Accept either InvalidName error or PDA seed length error
+            assert.isTrue(
+                errorStr.includes('InvalidName') ||
+                errorStr.includes('Max seed length exceeded') ||
+                errorStr.includes('maximum') ||
+                errorStr.includes('seeds')
+            )
+        }
     })
     
 })
