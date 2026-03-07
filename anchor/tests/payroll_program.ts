@@ -88,5 +88,24 @@ describe("Payroll Program - Comprehensive Tests", () => {
         ],
         program.programId)
         });
+
+    describe('1. Organisation Creation (create_org)', () => {
+        it('should successfully create an organisation', async () => {
+            // Call the create_org method on our smart contract
+
+            await program.methods.createOrg(orgName).accounts({
+                authority: authority.publicKey,
+            }).rpc();
+
+            // fetch the created organisation account
+            const orgAccount = await program.account.organisation.fetch(orgPda);
+
+            // Assert (verify) that all data was stored correctly
+            assert.equal(orgAccount.name, orgName, 'Organisation name mismatch');
+            assert.equal(orgAccount.treasury.toNumber(), 0, 'Initial treasury should be 0');
+            assert.equal(orgAccount.workersCount.toNumber(), 0, 'Initial workers count should be 0');
+            assert.equal(orgAccount.bump, orgBump, 'Bump seed mismatch');
+        })
+    })
     
 })
