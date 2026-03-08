@@ -172,7 +172,43 @@ describe("Payroll Program - Comprehensive Tests", () => {
 
             // Fetch the worker account and verify
             const workerAccount = await program.account.worker.fetch(worker1Pda);
-            assert.equal(workerAccount.salary.toNumber(), salary1.toNumber())
+            const orgAccount = await program.account.organisation.fetch(orgPda);
+
+            assert.equal(workerAccount.org.toBase58(), orgPda.toBase58(), 'Worker organisation mismatch');
+            assert.equal(workerAccount.workerPubkey.toBase58(), worker1.publicKey.toBase58(), 'Worker public key mismatch');
+            assert.equal(workerAccount.lastPaidCycle.toNumber(), 0, 'Worker last paid cycle should be 0');
+            assert.equal(orgAccount.workersCount.toNumber(), 1, 'Organisation workers count should be 1');
+            assert.equal(workerAccount.salary.toNumber(), salary1.toNumber(), 'Worker salary mismatch');
+        });
+
+        it('Should add multiple workers to the same organisation', async () => {
+            // Call add_worker for worker 2 and 3
+            await program.methods.addWorker(salary2).accountsPartial({
+                org: orgPda,
+                workerPubkey: worker2.publicKey,
+                authority: authority.publicKey
+            }).rpc();
+
+            await program.methods.addWorker(salary3).accountsPartial({
+                org: orgPda,
+                workerPubkey: worker3.publicKey,
+                authority: authority.publicKey,
+            }).rpc();
+
+            // fetch the organisation account and verify
+            const orgAccount = await program.account.organisation.fetch(orgPda);
+            const worker2Account = await program.account.worker.fetch(worker2Pda);
+            const worker3Account = await program.account.worker.fetch(worker3Pda);
+
+            assert.equal(orgAccount.workersCount.toNumber(), 3, 'Organisation workers count should be 3');
+            assert.equal(worker2Account.org.toBase58(), orgPda.toBase58(), 'Worker 2 organisation mismatch');
+            assert.equal(worker3Account.org.toBase58(), orgPda.toBase58(), 'Worker 3 organisation mismatch');
+            assert.equal(worker2Account.salary.toNumber(), salary2.toNumber(), 'Worker 2 salary mismatch');
+            assert.equal(worker3Account.salary.toNumber(), salary3.toNumber(), 'Worker 3 salary mismatch');
+            assert.equal(worker2Account.lastPaidCycle.toNumber(), 0, 'Worker 2 last paid cycle should be 0');
+            assert.equal(worker3Account.lastPaidCycle.toNumber(), 0, 'Worker 3 last paid cycle should be 0');
+            assert.equal(worker2Account.workerPubkey.toBase58(), worker2.publicKey.toBase58(), 'Worker 2 public key mismatch');
+            assert.equal(worker3Account.workerPubkey.toBase58(), worker3.publicKey.toBase58(), 'Worker 3 public key mismatch');
         })
     })
     
