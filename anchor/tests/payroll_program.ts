@@ -36,6 +36,9 @@ describe("Payroll Program - Comprehensive Tests", () => {
    const salary2 = new BN(1.5 * LAMPORTS_PER_SOL);
    const salary3 = new BN(2 * LAMPORTS_PER_SOL);
 
+   // Invalid salary amount
+   const invalidSalary = new BN(0);
+   const negativeSalary = new BN(-1 * LAMPORTS_PER_SOL);
   
     // Get the sol balance of any account
     async function getBalance(pubkey: PublicKey): Promise<number> {
@@ -209,7 +212,37 @@ describe("Payroll Program - Comprehensive Tests", () => {
             assert.equal(worker3Account.lastPaidCycle.toNumber(), 0, 'Worker 3 last paid cycle should be 0');
             assert.equal(worker2Account.workerPubkey.toBase58(), worker2.publicKey.toBase58(), 'Worker 2 public key mismatch');
             assert.equal(worker3Account.workerPubkey.toBase58(), worker3.publicKey.toBase58(), 'Worker 3 public key mismatch');
-        })
+        });
+
+        it('Should fail to add worker with 0 salary', async () => {
+            try {
+                await program.methods.addWorker(invalidSalary).accountsPartial({
+                    org: orgPda,
+                    workerPubkey: Keypair.generate().publicKey,
+                    authority: authority.publicKey,
+                }).rpc();
+
+                assert.fail('Should have failed with InvalidSalary error');
+            } catch (error: unknown) {
+                const errorStr = (error as Error).toString();
+
+                assert.include(errorStr, 'InvalidSalary');
+            }
+        });
+
+        it('Should fail to add worker with negative salary', async () => {
+            try {
+                await program.methods.addWorker(negativeSalary).accountsPartial({
+                    org: orgPda,
+                    workerPubkey: Keypair.generate().publicKey,
+                    authority: authority.publicKey,
+                }).rpc();
+            } catch (error: unknown) {
+                const errorStr = (error as Error).toString();
+
+                assert.include(errorStr, 'InvalidSalary');
+            }
+        });
     })
     
 })
