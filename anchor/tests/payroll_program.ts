@@ -263,4 +263,42 @@ describe("Payroll Program - Comprehensive Tests", () => {
             }
         });
     });
+
+    describe('3. Treasury Funding (fund_treasury)', () => {
+        const fundingAmount = new BN(10 * LAMPORTS_PER_SOL);
+        it('Should successfully fund organisation treasury', async () => {
+            // Get balances before transaction
+            const treasuryBefore = await getBalance(orgPda);
+            const authorityBalanceBefore = await getBalance(authority.publicKey);
+            // Fund the treasury
+           const txnSig = await program.methods.fundTreasury(fundingAmount).accountsPartial({
+                org: orgPda
+            }).rpc();
+
+            // Wait for the blockhash to be processed by the network
+            const latestBlockHash = await provider.connection.getLatestBlockhash();
+            await provider.connection.confirmTransaction({
+                signature: txnSig,
+                blockhash: latestBlockHash.blockhash,
+                lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+            }, 'confirmed');
+            
+            // Fetch the transaction details (use 'confirmed' or 'finalized' commitment)
+            const txDetails = await provider.connection.getTransaction(txnSig, {
+                commitment: "confirmed",
+                maxSupportedTransactionVersion: 0
+            });
+            console.log('Transaction details:', txDetails);
+            const actualFee = txDetails?.meta?.fee;
+            console.log('Actual fee:', actualFee);
+            // Get balances after and compare
+            const orgAccount = await program.account.organisation.fetch(orgPda);
+            const treasuryAfter = await getBalance(orgPda);
+            const authorityBalanceAfter = await getBalance(authority.publicKey);
+            assert.equal(orgAccount.treasury.toNumber(), fundingAmount.toNumber(), 'organisation treasury should increase');
+            assert.equal(treasuryAfter, treasuryBefore + fundingAmount.toNumber(), 'treasury should increase');
+            assert.isTrue(authorityBalanceAfter < authorityBalanceBefore, 'authority balance should decrease');
+            assert.equal(authorityBalanceAfter, authorityBalanceBefore - actualFee! - fundingAmount.toNumber(), 'authority balance should decrease by the actual fee and the funding amount');
+        })
+    })
 });
