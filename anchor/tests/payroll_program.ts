@@ -243,6 +243,24 @@ describe("Payroll Program - Comprehensive Tests", () => {
                 assert.include(errorStr, 'InvalidSalary');
             }
         });
-    })
-    
-})
+
+        it('Should fail seeds creation when an unauthorised passed as authority to add worker', async () => {
+            try {
+                const unauthorisedKeypair = Keypair.generate();
+                await airdrop(unauthorisedKeypair.publicKey);
+                await program.methods.addWorker(salary1).accountsPartial({
+                    org: orgPda,
+                    workerPubkey: Keypair.generate().publicKey,
+                    authority: unauthorisedKeypair.publicKey,
+                }).signers([unauthorisedKeypair]).rpc();
+                assert.fail('Should have failed with seeds constraint error');
+            } catch (error: unknown) {
+                console.log('Error:', error);
+                assert.isDefined(error, 'Expected an error to be thrown');
+
+                const errorStr = (error as Error).toString();
+                assert.include(errorStr, 'ConstraintSeeds');
+            }
+        });
+    });
+});
