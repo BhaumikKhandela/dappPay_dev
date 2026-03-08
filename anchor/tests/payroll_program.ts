@@ -126,6 +126,18 @@ describe("Payroll Program - Comprehensive Tests", () => {
                     errorStr.includes('seeds')
                 )
             }
+        });
+
+        it('Should fail to create duplicate organisation with same name', async () => {
+            try {
+                await program.methods.createOrg(orgName).accounts({
+                    authority: authority.publicKey
+                }).rpc();
+
+                assert.fail('Should have failed due to account already initialized');
+            } catch (error: unknown) {
+                assert.isTrue((error as Error).toString().includes('already in use'));
+            }
         })
     });
     
