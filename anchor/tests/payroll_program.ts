@@ -158,7 +158,22 @@ describe("Payroll Program - Comprehensive Tests", () => {
 
             const orgAccount = await program.account.organisation.fetch(newOrgPda);
             assert.equal(orgAccount.authority.toBase58(), newAuthority.publicKey.toBase58())
-        })
+        });
     });
+
+    describe('2. Worker Management (add_worker)', () => {
+        it('Should successfully add worker to organisation', async () => {
+            // Call the add_worker with worker's salary
+            await program.methods.addWorker(salary1).accountsPartial({
+                org: orgPda,
+                workerPubkey: worker1.publicKey,
+                authority: authority.publicKey
+            }).rpc();
+
+            // Fetch the worker account and verify
+            const workerAccount = await program.account.worker.fetch(worker1Pda);
+            assert.equal(workerAccount.salary.toNumber(), salary1.toNumber())
+        })
+    })
     
 })
