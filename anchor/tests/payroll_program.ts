@@ -138,6 +138,26 @@ describe("Payroll Program - Comprehensive Tests", () => {
             } catch (error: unknown) {
                 assert.isTrue((error as Error).toString().includes('already in use'));
             }
+        });
+
+        it('Should allow different authorities to create orgs with same name', async () => {
+            const newAuthority = Keypair.generate();
+            await airdrop(newAuthority.publicKey);
+
+            const [newOrgPda] = PublicKey.findProgramAddressSync([
+                Buffer.from('org'),
+                newAuthority.publicKey.toBuffer(),
+                Buffer.from(orgName)
+            ],
+             program.programId);
+
+            
+            await program.methods.createOrg(orgName).accounts({
+                authority: newAuthority.publicKey
+            }).signers([newAuthority]).rpc();
+
+            const orgAccount = await program.account.organisation.fetch(newOrgPda);
+            assert.equal(orgAccount.authority.toBase58(), newAuthority.publicKey.toBase58())
         })
     });
     
