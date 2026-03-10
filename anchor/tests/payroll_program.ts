@@ -299,6 +299,50 @@ describe("Payroll Program - Comprehensive Tests", () => {
             assert.equal(treasuryAfter, treasuryBefore + fundingAmount.toNumber(), 'treasury should increase');
             assert.isTrue(authorityBalanceAfter < authorityBalanceBefore, 'authority balance should decrease');
             assert.equal(authorityBalanceAfter, authorityBalanceBefore - actualFee! - fundingAmount.toNumber(), 'authority balance should decrease by the actual fee and the funding amount');
-        })
+        });
+
+        it('Should accumulate multiple funding transactions', async () => {
+            const additionalFund = new BN(5 * LAMPORTS_PER_SOL);
+
+            await program.methods.fundTreasury(additionalFund).accountsPartial({
+                org: orgPda,
+                authority: authority.publicKey,
+            }).rpc();
+
+            const orgAccount = await program.account.organisation.fetch(orgPda);
+            const expectedTotal = fundingAmount.add(additionalFund);
+
+            assert.equal(orgAccount.treasury.toNumber(), expectedTotal.toNumber(), 'Treasury should accumulate funds')
+        });
+
+        it('Should fail to fund with zero amount', async () => {
+            try {
+                await program.methods.fundTreasury(new BN(0)).accountsPartial({
+                    org: orgPda,
+                    authority: authority.publicKey
+                });
+                assert.fail('Should have failed with InvalidAmount error');
+            } catch (error: unknown) {
+                const errorStr = (error as Error).toString();
+                assert.include(errorStr, 'InvalidAmount');
+            }
+        });
+
+        it('Should fail when unauthroised user tries to fund treasury', async () => {
+            try {
+                const unauthorisedKeypair = Keypair.generate();
+                await airdrop(unauthorisedKeypair.publicKey);
+
+                await program.methods.fundTreasury(fundingAmount).accountsPartial({
+                    org: orgPda,
+                    authority: unauthorisedKeypair.publicKey,
+                }).signers([unauthorisedKeypair]).rpc();
+                assert.fail('Should have failed with seeds constraint error');
+            } catch (error: unknown) {
+                assert.isDefined(error, 'Expected an error to be thrown');
+                const errorStr = (error as Error).toString();
+                assert.include(errorStr, 'ConstraintSeeds');
+            }
+        });
     })
 });
