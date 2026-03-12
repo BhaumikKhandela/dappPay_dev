@@ -465,6 +465,11 @@ describe("Payroll Program - Comprehensive Tests", () => {
                 expectedTreasury.toString(),
                 "Treasury should decrease by the total salary paid"
             );
+
+            // verify last paid cycle is updated for each worker
+            filteredWorkers.forEach(worker => {
+                assert.equal(worker.account.lastPaidCycle.toNumber(), cycleTimestamp.toNumber(), 'Last paid cycle should be updated');
+            });
         });
       })
 });
