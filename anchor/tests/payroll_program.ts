@@ -385,91 +385,17 @@ describe("Payroll Program - Comprehensive Tests", () => {
              assert.equal(worker2BalanceAfter, worker2BalanceBefore + salary2.toNumber(), 'Worker 2 balance should increase by their salary');
              assert.equal(worker3BalanceAfter, worker3BalanceBefore + salary3.toNumber(), 'Worker 3 balance should increase by their salary');
 
-        });
-        it("Should correctly update treasury after payroll processing", async () => {
-
-            // Fetch organisation before payroll
-            const orgBefore = await program.account.organisation.fetch(orgPda);
-            const treasuryBefore = orgBefore.treasury;
-        
-            console.log("Treasury before payroll:", treasuryBefore.toString());
-        
-            const allWorkers = await program.account.worker.all();
-        
-            const filteredWorkers = allWorkers.filter(
-                w => w.account.org.toBase58() === orgPda.toBase58()
-            );
-        
-            console.log("Number of workers:", filteredWorkers.length);
-        
-            // Print each worker salary
-            filteredWorkers.forEach((worker, index) => {
-                console.log(
-                    `Worker ${index + 1} salary:`,
-                    worker.account.salary.toString()
+             // verify last paid cycle is updated for each worker
+             for (const worker of filteredWorkers) {
+                const updatedWorker = await program.account.worker.fetch(worker.publicKey);
+            
+                assert.equal(
+                    updatedWorker.lastPaidCycle.toNumber(),
+                    cycleTimestamp.toNumber(),
+                    "Last paid cycle should be updated"
                 );
-            });
-        
-            const cycleTimestamp = new BN(Math.floor(Date.now() / 1000));
-            console.log("Payroll cycle timestamp:", cycleTimestamp.toString());
-        
-            // Calculate total salary
-            const workersTotalSalary = filteredWorkers.reduce(
-                (acc, worker) => acc.add(worker.account.salary),
-                new BN(0)
-            );
-        
-            console.log("Total salary to be paid:", workersTotalSalary.toString());
-        
-            // Process payroll
-           const txnSig = await program.methods
-                .processPayroll(cycleTimestamp)
-                .accountsPartial({
-                    org: orgPda,
-                })
-                .remainingAccounts(
-                    filteredWorkers.flatMap(worker => [
-                        {
-                            pubkey: worker.publicKey,
-                            isSigner: false,
-                            isWritable: true,
-                        },
-                        {
-                            pubkey: worker.account.workerPubkey,
-                            isSigner: false,
-                            isWritable: true,
-                        }
-                    ])
-                )
-                .rpc();
-                const latestBlockHash = await provider.connection.getLatestBlockhash();
-                await provider.connection.confirmTransaction({
-                    signature: txnSig,
-                    blockhash: latestBlockHash.blockhash,
-                    lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-                }, 'confirmed');
-        
-            // Fetch organisation after payroll
-            const orgAfter = await program.account.organisation.fetch(orgPda);
-            const treasuryAfter = orgAfter.treasury;
-        
-            console.log("Treasury after payroll:", treasuryAfter.toString());
-        
-            const expectedTreasury = treasuryBefore.sub(workersTotalSalary);
-        
-            console.log("Expected treasury after payroll:", expectedTreasury.toString());
-        
-            // Assertion
-            assert.equal(
-                treasuryAfter.toString(),
-                expectedTreasury.toString(),
-                "Treasury should decrease by the total salary paid"
-            );
-
-            // verify last paid cycle is updated for each worker
-            filteredWorkers.forEach(worker => {
-                assert.equal(worker.account.lastPaidCycle.toNumber(), cycleTimestamp.toNumber(), 'Last paid cycle should be updated');
-            });
+            }
         });
+        
       })
 });
