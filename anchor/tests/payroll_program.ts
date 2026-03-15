@@ -346,12 +346,12 @@ describe("Payroll Program - Comprehensive Tests", () => {
         });
     });
     describe('4. Payroll Processing (process_payroll)', () => {
+        const cycleTimestamp = new BN (Math.floor(Date.now() / 1000));
         it('Should successfully process payroll for all workers', async () => {
             
             const allWorkers = await program.account.worker.all();
 
             const filteredWorkers = allWorkers.filter(worker => worker.account.org.toBase58() === orgPda.toBase58());
-            const cycleTimestamp = new BN (Math.floor(Date.now() / 1000));
             const workersTotalSalary = filteredWorkers.reduce((acc, worker) => acc.add(worker.account.salary), new BN(0));
             
             const orgBalanceBefore = await getBalance(orgPda);
@@ -396,6 +396,37 @@ describe("Payroll Program - Comprehensive Tests", () => {
                 );
             }
         });
+
+        it('Should skip workers who have been paid in the current cycle', async () => {
+            const orgAccountBefore = await program.account.organisation.fetch(orgPda);
+            const treasuryBefore = orgAccountBefore.treasury.toNumber();
+
+
+            const allWorkers = await program.account.worker.all();
+
+            const filteredWorkers = allWorkers.filter(worker =>  worker.account.org.toBase58() === orgPda.toBase58());
+            
+            // Try to process same cycle again
+            await program.methods.processPayroll(cycleTimestamp).accountsPartial({
+                org: orgPda, 
+            }).remainingAccounts(filteredWorkers.flatMap(worker => [
+                {
+                    pubkey: worker.publicKey,
+                    isSigner: false,
+                    isWritable: true,
+                },
+                {
+                    pubkey: worker.account.workerPubkey,
+                    isSigner: false,
+                    isWritable: true,
+                }
+            ])).rpc();
+
+            const orgAccountAfter = await program.account.organisation.fetch(orgPda);
+            const treasuryAfter  = orgAccountAfter.treasury.toNumber();
+
+            assert.equal(treasuryAfter, treasuryBefore, 'Treasury should not change for already paid');
+        })
         
       })
 });
