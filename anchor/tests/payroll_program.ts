@@ -345,6 +345,7 @@ describe("Payroll Program - Comprehensive Tests", () => {
             }
         });
     });
+
     describe('4. Payroll Processing (process_payroll)', () => {
         const cycleTimestamp = new BN (Math.floor(Date.now() / 1000));
         it('Should successfully process payroll for all workers', async () => {
@@ -487,5 +488,91 @@ describe("Payroll Program - Comprehensive Tests", () => {
             }
         })
         
-      })
+    });
+    
+    describe('5 Treasury Withdrawal (withdraw)', async () => {
+        const withdrawalAmount = new BN(2 * LAMPORTS_PER_SOL);
+
+        it('Should successfully withdraw funds from treasury', async () => {
+            const orgAccountBefore = await program.account.organisation.fetch(orgPda);
+            const treasuryBefore = orgAccountBefore.treasury.toNumber();
+            console.log('Treasury before:', treasuryBefore);
+            const authorityBalanceBefore = await getBalance(authority.publicKey);
+            console.log('Authority balance before:', authorityBalanceBefore);
+
+            const txnSig = await program.methods.withdraw(withdrawalAmount).accountsPartial({
+                org: orgPda,
+                authority: authority.publicKey,
+            })
+            .rpc();
+            
+            const latestBlockHash = await provider.connection.getLatestBlockhash();
+            await provider.connection.confirmTransaction({
+                signature: txnSig,
+                blockhash: latestBlockHash.blockhash,
+                lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+            }, 'confirmed');
+            
+            // Fetch the transaction details (use 'confirmed' or 'finalized' commitment)
+            const txDetails = await provider.connection.getTransaction(txnSig, {
+                commitment: "confirmed",
+                maxSupportedTransactionVersion: 0
+            });
+            console.log('Transaction details:', txDetails);
+            const actualFee = txDetails?.meta?.fee;
+            console.log('Actual fee:', actualFee);
+            const orgAccountAfter = await program.account.organisation.fetch(orgPda);
+            const treasuryAfter = orgAccountAfter.treasury.toNumber();
+            console.log('Treasury after:', treasuryAfter);
+            const authorityBalanceAfter = await getBalance(authority.publicKey);
+            console.log('Authority balance after:', authorityBalanceAfter);
+
+            assert.equal(treasuryAfter, treasuryBefore - withdrawalAmount.toNumber(), 'Treasury should decrease by the withdrawal amount');
+            assert.equal(authorityBalanceAfter, authorityBalanceBefore + withdrawalAmount.toNumber() - actualFee!, 'Authority balance should increase by the withdrawal amount minus the actual fee');
+            assert.equal(orgAccountAfter.treasury.toNumber(), orgAccountBefore.treasury.toNumber() - withdrawalAmount.toNumber(), 'Treasury should be 0 after withdrawal');
+        });
+
+        it('Should fail when attempting to withdraw 0 amount', async () => {
+            try {
+                await program.methods.withdraw(new BN(0)).accountsPartial({
+                    org: orgPda,
+                    authority: authority.publicKey,
+                }).rpc();
+            }
+            catch (error: unknown) {
+                const errorStr = (error as Error).toString();
+                assert.include(errorStr, 'InvalidAmount');
+            }
+        });
+
+        it('Should fail when attempting to withdraw more than treasury balance', async () => {
+            try {
+                await program.methods.withdraw(new BN(100 * LAMPORTS_PER_SOL)).accountsPartial({
+                    org: orgPda,
+                    authority: authority.publicKey,
+                }).rpc();
+            }
+            catch (error: unknown) {
+                const errorStr = (error as Error).toString();
+                assert.include(errorStr, 'InsufficientFunds');
+            }
+        });
+
+        it('Should fail when unauthroised user tries to withdraw', async () => {
+            try {
+                const unauthorisedKeypair = Keypair.generate();
+                await airdrop(unauthorisedKeypair.publicKey);
+
+                await program.methods.withdraw(withdrawalAmount).accountsPartial({
+                    org: orgPda,
+                    authority: unauthorisedKeypair.publicKey,
+                }).signers([unauthorisedKeypair]).rpc();
+                assert.fail('Should have failed with seeds constraint error');
+            } catch (error: unknown) {
+                assert.isDefined(error, 'Expected an error to be thrown');
+                const errorStr = (error as Error).toString();
+                assert.include(errorStr, 'ConstraintSeeds');
+            }
+        });
+    })
 });
