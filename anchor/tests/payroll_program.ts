@@ -426,6 +426,65 @@ describe("Payroll Program - Comprehensive Tests", () => {
             const treasuryAfter  = orgAccountAfter.treasury.toNumber();
 
             assert.equal(treasuryAfter, treasuryBefore, 'Treasury should not change for already paid');
+        });
+
+        it('Should fail when treasury has insufficient funds', async () => {
+            const newOrgName = 'PoorOrg';
+            const [poorOrgPda] = PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from('org'),
+                    authority.publicKey.toBuffer(),
+                    Buffer.from(newOrgName)
+                ],
+                program.programId
+            );
+
+            await program.methods.createOrg(newOrgName).accounts({
+                authority: authority.publicKey
+            })
+            .rpc();
+
+            // Add Worker
+            const poorWorker = Keypair.generate();
+            const [poorWorkerPda] = PublicKey.findProgramAddressSync([
+                Buffer.from('worker'),
+                poorOrgPda.toBuffer(),
+                poorWorker.publicKey.toBuffer()
+            ],
+        program.programId);
+
+            await program.methods.addWorker(salary1).accountsPartial({
+                org: poorOrgPda,
+                workerPubkey: poorWorker.publicKey,
+                authority: authority.publicKey,
+                systemProgram: anchor.web3.SystemProgram.programId
+            })
+            .rpc();
+
+            // Fund with insufficient funds
+            await program.methods.fundTreasury(new BN(0.5 * LAMPORTS_PER_SOL)).accountsPartial({
+                org: poorOrgPda,
+                authority: authority.publicKey,
+                systemProgram: anchor.web3.SystemProgram.programId
+            })
+            .rpc();
+
+            // Try to process payroll
+            try {
+                await program.methods.processPayroll(new BN(Date.now() / 1000 + 1000)).accountsPartial({
+                    org: poorOrgPda,
+                    authority: authority.publicKey,
+                    systemProgram: anchor.web3.SystemProgram.programId
+                }).remainingAccounts([
+                    { pubkey: poorWorkerPda, isSigner: false, isWritable: true},
+                    { pubkey: poorWorker.publicKey, isSigner: false, isWritable: true}
+                ])
+                .rpc();
+
+                assert.fail('Should have failed with InsufficientFunds error');
+            } catch (error: unknown) {
+                assert.include((error as Error).toString(), 'InsufficientFunds');
+            }
         })
         
       })
