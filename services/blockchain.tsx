@@ -441,3 +441,13 @@ export const getProvider = (publicKey: PublicKey | null,
         PROGRAM_ID
     )
  }
+
+ export const deriveWorkerPda = (
+    orgPda: string,
+    workerPublicKey: PublicKey
+ ): [PublicKey, number] => {
+    return PublicKey.findProgramAddressSync(
+        [Buffer.from('worker'), new PublicKey(orgPda).toBuffer(), workerPublicKey.toBuffer()],
+        PROGRAM_ID
+    )
+ }
