@@ -7,7 +7,7 @@ pub mod errors;
 pub mod instructions;
 
 use instructions::*;
-declare_id!("A9fnM3skS5kbECt2isFV2EGvS4D7hnsMjnqi2YBwaeed");
+declare_id!("8iFKexVh7bJY4BJMd7c5VEMNSDUULJzkUR1E7dXLKaHY");
 
 #[program]
 pub mod payroll_program {
