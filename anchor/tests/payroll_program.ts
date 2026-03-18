@@ -574,5 +574,106 @@ describe("Payroll Program - Comprehensive Tests", () => {
                 assert.include(errorStr, 'ConstraintSeeds');
             }
         });
+    });
+
+    describe('6 Integration & Edge Cases', () => {
+        it('Should handle complete payroll lifecycle', async () => {
+            // Create new organisation
+            const lifecycleOrgName = 'LifecycleTest'
+            const [lifecycleOrgPda] = PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from('org'),
+                    authority.publicKey.toBuffer(),
+                    Buffer.from(lifecycleOrgName)
+                ],
+                program.programId
+            );
+
+            await program.methods.createOrg(lifecycleOrgName).accounts({
+                authority: authority.publicKey
+            })
+            .rpc();
+
+            // Add workers
+            const Worker1 = Keypair.generate();
+            const [Worker1Pda] = PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from('worker'),
+                    lifecycleOrgPda.toBuffer(),
+                    Worker1.publicKey.toBuffer()
+                ],
+                program.programId
+            );
+
+            await program.methods.addWorker(new BN(LAMPORTS_PER_SOL)).accountsPartial({
+                org: lifecycleOrgPda,
+                workerPubkey: Worker1.publicKey,
+                authority: authority.publicKey,
+                systemProgram: anchor.web3.SystemProgram.programId
+            })
+            .rpc();
+
+            // Fund treasury
+            const fundAmount = new BN(5 * LAMPORTS_PER_SOL);
+            await program.methods.fundTreasury(fundAmount).accountsPartial({
+                org: lifecycleOrgPda,
+                authority: authority.publicKey,
+                systemProgram: anchor.web3.SystemProgram.programId
+            })
+            .rpc();
+
+            // Process payroll
+            await program.methods.processPayroll(new BN(Date.now() / 1000)).accountsPartial({
+                org: lifecycleOrgPda,
+                authority: authority.publicKey,
+                systemProgram: anchor.web3.SystemProgram.programId
+            }).remainingAccounts([
+                { pubkey: Worker1Pda, isSigner: false, isWritable: true},
+                { pubkey: Worker1.publicKey, isSigner: false, isWritable: true}
+            ])
+            .rpc();
+
+            // Withdraw remaining 
+            const orgAccount = await program.account.organisation.fetch(lifecycleOrgPda);
+            
+            await program.methods.withdraw(orgAccount.treasury)
+            .accountsPartial({
+                org: lifecycleOrgPda,
+                authority: authority.publicKey,
+                systemProgram: anchor.web3.SystemProgram.programId
+            })
+            .rpc();
+
+            // Verify the final state
+            const orgAccountAfter = await program.account.organisation.fetch(lifecycleOrgPda);
+
+            assert.equal(orgAccountAfter.treasury.toNumber(), 0, 'Treasury should be 0 after withdrawal');
+            assert.equal(orgAccountAfter.workersCount.toNumber(), 1, 'Should have 1 worker')
+        });
+
+        it('Should handle PDA derivation consistency', async () => {
+            // verify all PDAs are correctly derived
+            const [derivedOrgPda] = PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from('org'),
+                    authority.publicKey.toBuffer(),
+                    Buffer.from(orgName)
+                ],
+                program.programId
+            );
+
+            assert.equal(derivedOrgPda.toBase58(), orgPda.toBase58(), 'Organisation PDA should match');
+
+            const [derivedWorker1Pda] = PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from('worker'),
+                    orgPda.toBuffer(),
+                    worker1.publicKey.toBuffer()
+                ],
+                program.programId
+            );
+
+            assert.equal(derivedWorker1Pda.toBase58(), worker1Pda.toBase58(), 'Worker 1 PDA should match');
+        })
     })
 });
