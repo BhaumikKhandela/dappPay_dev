@@ -8,6 +8,8 @@ import { Menu } from 'lucide-react';
 import { Message, PayrollSummary, WorkerSummary } from '@/utils/interface';
 import Footer from './Footer';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { setWalletContext, blockchainMcpTools } from '@/lib/payroll-mcp-tools';
+import { getCluster } from '@/utils/helper';
 
 type ChatMessage = Message & {
   id: string;
@@ -46,75 +48,76 @@ interface JsonSchemaProperty {
   enum?: string[];
 }
 
-// Dummy tools for teaching - replace real blockchain calls with static data
-/* eslint-disable @typescript-eslint/no-unused-vars */
-const dummyBlockchainMcpTools = {
-  fetch_user_organizations: {
-    description: 'Fetch user organizations',
-    execute: async (_args: Record<string, unknown>, _context: { toolCallId: string; messages: unknown[] }) => ({
-      success: true,
-      organizations: [
-        { name: 'Dummy Org 1', publicKey: 'dummyPda1', treasury: 100, workersCount: 5 },
-        { name: 'Dummy Org 2', publicKey: 'dummyPda2', treasury: 200, workersCount: 3 },
-      ],
-    }),
-  },
-  fetch_organization_details: {
-    description: 'Fetch organization details',
-    execute: async (args: { orgPda?: string }, _context: { toolCallId: string; messages: unknown[] }) => ({
-      success: true,
-      organization: {
-        name: args.orgPda ? `Dummy Org for ${args.orgPda}` : 'Unknown',
-        treasury: 150,
-        workersCount: 4,
-        workers: [
-          { publicKey: 'worker1', salary: 50, lastPaid: 1699999999 },
-          { publicKey: 'worker2', salary: 60, lastPaid: 1700000000 },
-        ],
-      },
-    }),
-  },
-  create_organization: {
-    description: 'Create organization',
-    execute: async (args: { name: string }, _context: { toolCallId: string; messages: unknown[] }) => ({
-      success: true,
-      message: `Dummy organization ${args.name} created`,
-      orgPda: 'dummyNewOrgPda',
-    }),
-  },
-  // Add dummies for other tools similarly...
-  add_worker: {
-    description: 'Add worker',
-    execute: async (_args: Record<string, unknown>, _context: { toolCallId: string; messages: unknown[] }) => ({ success: true, message: 'Dummy worker added' })
-  },
-  fund_treasury: {
-    description: 'Fund treasury',
-    execute: async (_args: Record<string, unknown>, _context: { toolCallId: string; messages: unknown[] }) => ({ success: true, message: 'Dummy treasury funded' })
-  },
-  process_payroll: {
-    description: 'Process payroll',
-    execute: async (_args: Record<string, unknown>, _context: { toolCallId: string; messages: unknown[] }) => ({ success: true, message: 'Dummy payroll processed' })
-  },
-  withdraw_from_treasury: {
-    description: 'Withdraw from treasury',
-    execute: async (_args: Record<string, unknown>, _context: { toolCallId: string; messages: unknown[] }) => ({ success: true, message: 'Dummy withdrawal' })
-  },
-};
-/* eslint-enable @typescript-eslint/no-unused-vars */
+interface ZodDef {
+  typeName: string; // Type identifier (e.g. ZodString)
+  shape?: (() => Record<string, unknown>) | Record<string, unknown>; // Object shape
+  description?: string; // Field description
+  values: string[] | Set<string>; // Enum values
+  innerType?: { _def: ZodDef }; // Nested type definition
+}
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+interface ZodType {
+  _def: ZodDef;
+  [key: string]: unknown;
+}
+
 const getOpenAITools = () => {
-  return Object.entries(dummyBlockchainMcpTools).map(([name, tool]) => {
+  return Object.entries(blockchainMcpTools).map(([name, tool]) => {
     const properties: Record<string, JsonSchemaProperty> = {};
     const required: string[] = [];
 
-    // Dummy schema parsing - simplified for teaching
-    // In real code, this would parse Zod schemas, but here we hardcode dummies
-    if (name === 'create_organization') {
-      properties['name'] = { type: 'string', description: 'Organization name' };
-      required.push('name');
+
+    try {
+      const schema = tool.inputSchema;
+      if (schema && typeof schema === 'object' &&  '_def' in schema) {
+        const schemaObj = schema as unknown as ZodType;
+        const def = schemaObj._def;
+  
+        if (def.typeName === 'ZodObject' && def.shape) {
+          const shape = typeof def.shape === 'function' ? def.shape() : def.shape;
+  
+          Object.entries(shape).forEach(([key, zodType]) => {
+            if (!zodType || typeof zodType !== 'object' || !('_def' in zodType)) {
+              return;
+            } 
+  
+            const innerDef = (zodType as ZodType)._def;
+            
+              let isOptional = false;
+              let actualDef = innerDef;
+  
+              if (innerDef.typeName === 'ZodOptional') {
+                isOptional = true;
+                actualDef = innerDef.innerType?._def || innerDef;
+              }
+  
+              let type: JsonSchemaProperty['type'] = 'string';
+              if (actualDef.typeName === 'ZodString') type = 'string';
+              else if (actualDef.typeName === 'ZodNumber') type = 'number';
+              else if (actualDef.typeName === 'ZodBoolean') type = 'boolean';
+              else if (actualDef.typeName === 'ZodObject') type = 'object';
+              else if (actualDef.typeName === 'ZodArray') type = 'array';
+            
+              properties[key] = {
+                type,
+                description: actualDef.description || innerDef.description || `${key} parameter`
+              };
+
+              if (actualDef.typeName === 'ZodEnum' && actualDef.values) {
+                properties[key].enum = Array.isArray(actualDef.values)
+                ? actualDef.values
+                : Array.from(actualDef.values);
+              }
+
+              if (!isOptional) {
+                required.push(key);
+              }
+          })
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to parse schema for ${name}:`, error);
     }
-    // Add for others...
 
     return {
       type: 'function' as const,
@@ -124,10 +127,11 @@ const getOpenAITools = () => {
         parameters: {
           type: 'object',
           properties,
-          required,
-        },
-      },
-    };
+          required
+        }
+      }
+    }
+
   });
 };
 
@@ -298,9 +302,42 @@ const Dashboard = () => {
 
   useEffect(() => {
     const loadOrganizations = async () => {
-      try {
-        if (!publicKey) return;
+      if (!publicKey) return;
 
+      const tool = blockchainMcpTools.fetch_user_organisations;
+
+      // Check if tool exists (safety check)
+      if (!tool || !tool.execute) {
+        console.error('fetch_user_organisations tool not available');
+        return;
+      }
+      try {
+        
+        const result = await tool.execute(
+          {},
+          {toolCallId: 'load-orgs', messages: []}
+        );
+
+        // Check if result is succesfull
+        if (result && typeof result === 'object' && 'success' in result ) {
+          if (result.success && Array.isArray(result.organisations)) {
+            const mappedOrgs: PayrollSummary[] = result.organisations.map((org: unknown) => {
+              const orgData = org as Record<string, unknown>;
+              const workerCount = Number(orgData.workersCount || 0);
+
+              return {
+                id: String(orgData.publicKey || orgData.name || ''),
+                orgName: String(orgData.name || 'Unknown'),
+                treasury: Number(orgData.treasury || 0),
+                workers: Array.from({ length: workerCount }, () => ({}) as WorkerSummary),
+                createdAt: Number(orgData.createdAt || 0),
+              }
+            });
+
+            // Update UI with organisations
+            setOrganizations(mappedOrgs);
+          }
+        }
         console.log('Wallet connected:', publicKey.toBase58());
 
       } catch (error) {
@@ -309,11 +346,12 @@ const Dashboard = () => {
     };
 
     loadOrganizations();
-  }, []);
+  }, [publicKey]);
 
   useEffect(() => {
-
-  },[]); 
+    setWalletContext(publicKey || null, signTransaction || null);
+    
+  },[publicKey, signTransaction]); 
 
   const getActiveApiKey = () => {
     return userApiKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY || '';
@@ -347,7 +385,46 @@ const Dashboard = () => {
 
       const systemPrompt: OpenAIMessage = {
         role: 'system',
-        content: `You are a helpful payroll management assistant on Solana blockchain.` 
+        content: `You are a helpful payroll management assistant on Solana blockchain.
+        
+        Your available organizations:
+        ${organizations.map(org => `- ${org.orgName} {ID: ${org.id}}`).join('\n')}
+        
+        When users ask to:
+      - "Show organizations" or "list my orgs" → use fetch_user_organizations (no parameters needed)
+      - "Show details for [ORG_NAME]" → use fetch_organization_details with orgPda from the list above
+      - "Create organization [NAME]" → use create_organization with the name parameter
+      - "Add worker" → use add_worker with orgPda, workerPublicKey, and salaryInSol
+      - "Fund treasury" → use fund_treasury with orgPda and amountInSol
+      - "Process payroll" → use process_payroll with orgPda
+      - "Withdraw [AMOUNT] from [ORG_NAME]" → use withdraw_from_treasury with orgPda and amountInSol 
+      
+      CRITICAL RULES:
+      1. When a user mentions an organization by name (like "TESLA"), look it up in the list above to get its orgPda/ID
+      2. Always extract ALL required parameters from user requests
+      3. For fetch_organization_details, you MUST provide the orgPda parameter — use the ID from the organizations list
+      4. If a parameter is missing, ask the user for it
+      5. Be conversational and friendly in your responses
+      6. After tools execute, provide a brief, natural summary — the tool results are already formatted nicely
+      
+      Available tools: ${Object.keys(blockchainMcpTools).join('\n')}
+
+      SOLANA EXPLORER LINKS:
+      When displaying transaction signatures or addresses, ALWAYS provide clickable Solana Explorer links based on the current cluster:
+      - Transaction format: https://explorer.solana.com/tx/[SIGNATURE]?cluster=[CLUSTER]
+      - Address format: https://explorer.solana.com/address/[ADDRESS]?cluster=[CLUSTER]
+
+      Current cluster: ${getCluster(process.env.NEXT_PUBLIC_CLUSTER || 'devnet')}
+      Supported clusters: devnet, testnet, mainnet-beta
+
+      Example in response:
+      "Transaction: [View on Explorer](https://explorer.solana.com/tx/abc123?cluster=devnet)"
+      "Organization Address: [ADDRESS](https://explorer.solana.com/address/xyz789?cluster=devnet)"
+
+      IMPORTANT: Replace [CLUSTER] with the actual cluster value. Always include cluster parameter in links.
+      `
+
+     
 
       };
 
@@ -368,6 +445,7 @@ const Dashboard = () => {
       const maxIterations = 5;
       const activeApiKey = getActiveApiKey();
 
+      const tools = getOpenAITools();
       while (iterations < maxIterations) {
         iterations++;
 
@@ -381,7 +459,7 @@ const Dashboard = () => {
           body: JSON.stringify({
             model: 'gpt-4o',
             messages: conversationMessages,
-            tools: [],
+            tools,
             tool_choice: 'auto'
           }),
         });
@@ -416,7 +494,7 @@ const Dashboard = () => {
 
             let toolOutput: unknown;
             try {
-              const tool = dummyBlockchainMcpTools[toolName as keyof typeof dummyBlockchainMcpTools];
+              const tool = blockchainMcpTools[toolName as keyof typeof blockchainMcpTools];
               if (!tool || !tool.execute) {
                 throw new Error(`Unknown tool: ${toolName}`);
               }
@@ -472,10 +550,13 @@ const Dashboard = () => {
       };
       setMessages((prev) => [...prev, assistantMessage]);
 
-      const tool = dummyBlockchainMcpTools.fetch_user_organizations;
-      const result = await tool.execute({}, { toolCallId: 'refresh', messages: [] });
+     
+      if (publicKey) {
+        const tool = blockchainMcpTools.fetch_user_organisations;
+        const result = await tool.execute!({}, { toolCallId: 'refresh', messages: []});
+
       if (result && typeof result === 'object' && 'success' in result && result.success) {
-        const mappedOrgs: PayrollSummary[] = (result.organizations as unknown[]).map((org: unknown) => {
+        const mappedOrgs: PayrollSummary[] = (result.organisations as unknown[]).map((org: unknown) => {
           const orgData = org as Record<string, unknown>;
           const workerCount = Number(orgData.workersCount || 0);
           return {
@@ -488,6 +569,8 @@ const Dashboard = () => {
         });
         setOrganizations(mappedOrgs);
       }
+      }
+
 
     } catch (error) {
       console.error('Error generating response:', error);
