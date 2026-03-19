@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { Send, Bot, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
+import { PublicKey } from '@solana/web3.js';
 
 type Message = {
     role: 'user' | 'bot';
@@ -18,7 +19,7 @@ interface ChatPanelProps {
     input: string;
     isLoading: boolean;
     isPayrollOpen: boolean;
-    publicKey?: string | null;
+    publicKey?: PublicKey | null;
     onInputChange: (value: string) => void;
     onSubmit: (e?: React.FormEvent) => void;
     apiKeySet: boolean;
@@ -246,7 +247,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                 <div className="flex items-center justify-between mt-2">
                     <p className="text-[10px] sm:text-xs text-slate-500">
                         Wallet: {publicKey ? (
-                            <span className="text-[#00FFA3] font-mono">{publicKey.slice(0, 6)}...</span>
+                            <span className="text-[#00FFA3] font-mono">{publicKey.toBase58().slice(0, 6)}...</span>
                         ) : (
                             <span className="text-yellow-500">Not connected</span>
                         )}
