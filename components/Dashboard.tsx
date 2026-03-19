@@ -7,6 +7,7 @@ import OrganizationsPanel from './OrganizationsPanel';
 import { Menu } from 'lucide-react';
 import { Message, PayrollSummary, WorkerSummary } from '@/utils/interface';
 import Footer from './Footer';
+import { useWallet } from '@solana/wallet-adapter-react';
 
 type ChatMessage = Message & {
   id: string;
@@ -254,11 +255,13 @@ const Dashboard = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const dummyPublicKey = 'dummyPublicKey'; // Dummy public key for teaching
+  const {publicKey, signTransaction} = useWallet();
 
   // Initialize messages with API key requirement check
   useEffect(() => {
-    const hasEnvKey = true; // Dummy: Assume key is set for teaching
+    const hasEnvKey = !!process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+
+ 
     setApiKeySet(hasEnvKey);
 
     if (hasEnvKey) {
@@ -295,31 +298,11 @@ const Dashboard = () => {
 
   useEffect(() => {
     const loadOrganizations = async () => {
-      const tool = dummyBlockchainMcpTools.fetch_user_organizations;
-      if (!tool || !tool.execute) {
-        console.error('fetch_user_organizations tool not available');
-        return;
-      }
-
       try {
-        const result = await tool.execute({}, { toolCallId: 'load-orgs', messages: [] });
+        if (!publicKey) return;
 
-        if (typeof result === 'object' && result !== null && 'success' in result) {
-          if (result.success && Array.isArray(result.organizations)) {
-            const mappedOrgs: PayrollSummary[] = result.organizations.map((org: unknown) => {
-              const orgData = org as Record<string, unknown>;
-              const workerCount = Number(orgData.workersCount || 0);
-              return {
-                id: String(orgData.publicKey || orgData.name || ''),
-                orgName: String(orgData.name || 'Unknown'),
-                treasury: Number(orgData.treasury || 0),
-                createdAt: Number(orgData.createdAt || 0),
-                workers: Array.from({ length: workerCount }, () => ({}) as WorkerSummary),
-              };
-            });
-            setOrganizations(mappedOrgs);
-          }
-        }
+        console.log('Wallet connected:', publicKey.toBase58());
+
       } catch (error) {
         console.error('Failed to load organizations:', error);
       }
@@ -327,6 +310,14 @@ const Dashboard = () => {
 
     loadOrganizations();
   }, []);
+
+  useEffect(() => {
+
+  },[]); 
+
+  const getActiveApiKey = () => {
+    return userApiKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY || '';
+  }
 
   const handleApiKeySubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -356,29 +347,8 @@ const Dashboard = () => {
 
       const systemPrompt: OpenAIMessage = {
         role: 'system',
-        content: `You are a helpful payroll management assistant on Solana blockchain. 
+        content: `You are a helpful payroll management assistant on Solana blockchain.` 
 
-        Your available organizations:
-        ${organizations.map(org => `- ${org.orgName} (ID: ${org.id})`).join('\n')}
-
-        When users ask to:
-        - "Show organizations" or "list my orgs" → use fetch_user_organizations (no parameters needed)
-        - "Show details for [ORG_NAME]" → use fetch_organization_details with orgPda from the list above
-        - "Create organization [NAME]" → use create_organization with the name parameter
-        - "Add worker" → use add_worker with orgPda, workerPublicKey, and salaryInSol
-        - "Fund treasury" → use fund_treasury with orgPda and amountInSol
-        - "Process payroll" → use process_payroll with orgPda
-        - "Withdraw [AMOUNT] from [ORG_NAME]" → use withdraw_from_treasury with orgPda and amountInSol
-
-        CRITICAL RULES:
-        1. When a user mentions an organization by name (like "TESLA"), look it up in the list above to get its orgPda/ID
-        2. Always extract ALL required parameters from user requests
-        3. For fetch_organization_details, you MUST provide the orgPda parameter - use the ID from the organizations list
-        4. If a parameter is missing, ask the user for it
-        5. Be conversational and friendly in your responses
-        6. After tools execute, provide a brief, natural summary - the tool results are already formatted nicely
-
-        Available tools: ${Object.keys(dummyBlockchainMcpTools).join(', ')}`,
       };
 
       const conversationMessages: OpenAIMessage[] = [
@@ -396,20 +366,31 @@ const Dashboard = () => {
       let fullResponse = '';
       let iterations = 0;
       const maxIterations = 5;
+      const activeApiKey = getActiveApiKey();
 
       while (iterations < maxIterations) {
         iterations++;
 
-        // Dummy AI response simulation instead of real fetch
-        const dummyChoice: OpenAIResponse['choices'][number] = {
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: userInput.includes('create') ? [{ id: 'dummy1', type: 'function', function: { name: 'create_organization', arguments: '{"name":"DummyOrg"}' } }] : [],
+      
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${activeApiKey}`,
           },
-          finish_reason: 'tool_calls',
-        };
-        const data: OpenAIResponse = { choices: [dummyChoice] };
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: conversationMessages,
+            tools: [],
+            tool_choice: 'auto'
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`OpenAI API error: ${response.statusText}`);
+        }
+
+        const data: OpenAIResponse = await response.json();
         const choice = data.choices[0];
 
         if (!choice || !choice.message) {
@@ -546,7 +527,7 @@ const Dashboard = () => {
     <div className="min-h-screen bg-linear-to-br from-black via-slate-900 to-black pt-16 sm:pt-20">
       <Header />
 
-      {!dummyPublicKey && (
+      {!publicKey && (
         <div className="fixed top-16 sm:top-20 right-2 sm:right-4 z-40 p-3 sm:p-4 bg-slate-800 text-white rounded-lg text-xs sm:text-sm max-w-[90vw] sm:max-w-none">
           <p>Connect your wallet to enable transactions.</p>
         </div>
@@ -559,7 +540,7 @@ const Dashboard = () => {
             input={input}
             isLoading={isLoading || !apiKeySet}
             isPayrollOpen={isPayrollOpen}
-            publicKey={dummyPublicKey}
+            publicKey={publicKey}
             onInputChange={setInput}
             onSubmit={handleSubmit}
             apiKeySet={apiKeySet}
